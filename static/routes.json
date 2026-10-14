@@ -1,0 +1,8 @@
+[
+  {
+    "path": "/loop/",
+    "name": "PageLoop",
+    "template": "/loop/static/index.vue",
+    "component": "/loop/static/index.js"
+  }
+]

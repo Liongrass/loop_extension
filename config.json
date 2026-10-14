@@ -1,0 +1,14 @@
+{
+  "name": "Loop",
+  "short_description": "Loop swaps through a litd funding source",
+  "tile": "/loop/static/loop.svg",
+  "min_lnbits_version": "1.0.0",
+  "contributors": [
+    {
+      "name": "Leo",
+      "uri": "mailto:leo@lightning.engineering",
+      "role": "Developer"
+    }
+  ],
+  "license": "MIT"
+}
