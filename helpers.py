@@ -1,22 +1,20 @@
+import base64
+from collections.abc import Callable
+from urllib.parse import quote
 from http import HTTPStatus
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import grpc
 import httpx
 from fastapi import HTTPException
 from google.protobuf import descriptor_pb2, descriptor_pool, json_format
+from google.protobuf.message import Message
 from google.protobuf.message_factory import GetMessageClass
 from lnbits.helpers import normalize_endpoint
 from lnbits.settings import settings
+from lnbits.wallets.lnd_grpc_files import lightning_pb2
 from lnbits.wallets.macaroon import load_macaroon
-
-# Loop RPCs this extension calls: gRPC method -> (REST path, request, response).
-_LOOP_METHODS = {
-    "GetInfo": ("/v1/loop/info", "GetInfoRequest", "GetInfoResponse"),
-    "LoopOutTerms": ("/v1/loop/out/terms", "TermsRequest", "OutTermsResponse"),
-    "GetLoopInTerms": ("/v1/loop/in/terms", "TermsRequest", "InTermsResponse"),
-}
 
 # Load the Loop messages into a private pool, so they can't clash with the
 # protos LNbits core registers in the default one.
@@ -27,8 +25,97 @@ for _file in descriptor_pb2.FileDescriptorSet.FromString(
     _loop_pool.Add(_file)
 
 
-def _loop_message(name: str):
+def loop_message(name: str) -> Any:
     return GetMessageClass(_loop_pool.FindMessageTypeByName(f"looprpc.{name}"))
+
+
+class Rpc(NamedTuple):
+    grpc_path: str
+    request: Any
+    response: Any
+    rest_method: str
+    # Builds the REST path (with query string) from the request.
+    rest_path: Callable[[Any], str]
+
+
+def _loop_rpc(
+    method: str, request: str, response: str, rest_method: str, rest_path
+) -> Rpc:
+    return Rpc(
+        f"/looprpc.SwapClient/{method}",
+        loop_message(request),
+        loop_message(response),
+        rest_method,
+        rest_path if callable(rest_path) else lambda _: rest_path,
+    )
+
+
+GET_INFO = _loop_rpc(
+    "GetInfo", "GetInfoRequest", "GetInfoResponse", "GET", "/v1/loop/info"
+)
+LOOP_OUT_TERMS = _loop_rpc(
+    "LoopOutTerms", "TermsRequest", "OutTermsResponse", "GET", "/v1/loop/out/terms"
+)
+LOOP_IN_TERMS = _loop_rpc(
+    "GetLoopInTerms", "TermsRequest", "InTermsResponse", "GET", "/v1/loop/in/terms"
+)
+LOOP_OUT_QUOTE = _loop_rpc(
+    "LoopOutQuote",
+    "QuoteRequest",
+    "OutQuoteResponse",
+    "GET",
+    lambda r: f"/v1/loop/out/quote/{r.amt}?conf_target={r.conf_target}",
+)
+LOOP_OUT = _loop_rpc("LoopOut", "LoopOutRequest", "SwapResponse", "POST", "/v1/loop/out")
+LIST_SWAPS = _loop_rpc(
+    "ListSwaps",
+    "ListSwapsRequest",
+    "ListSwapsResponse",
+    "GET",
+    lambda r: (
+        "/v1/loop/swaps?list_swap_filter.label="
+        f"{quote(r.list_swap_filter.label)}"
+    ),
+)
+SWAP_INFO = _loop_rpc(
+    "SwapInfo",
+    "SwapInfoRequest",
+    "SwapStatus",
+    "GET",
+    # REST needs the swap id as URL safe base64.
+    lambda r: f"/v1/loop/swap/{base64.urlsafe_b64encode(r.id).decode()}",
+)
+LND_LIST_PAYMENTS = Rpc(
+    "/lnrpc.Lightning/ListPayments",
+    lightning_pb2.ListPaymentsRequest,
+    lightning_pb2.ListPaymentsResponse,
+    "GET",
+    lambda r: (
+        f"/v1/payments?include_incomplete={str(r.include_incomplete).lower()}"
+        f"&creation_date_start={r.creation_date_start}"
+        f"&max_payments={r.max_payments}"
+    ),
+)
+
+
+# gRPC codes that mean litd's answer never reached us, so a request that
+# changes state may or may not have been applied. Plain loopd errors arrive as
+# UNKNOWN; those are real answers. litd also returns UNAVAILABLE itself when it
+# can't reach Loop, which is safe but can't be told apart.
+_AMBIGUOUS_CODES = (
+    grpc.StatusCode.UNAVAILABLE,
+    grpc.StatusCode.DEADLINE_EXCEEDED,
+    grpc.StatusCode.CANCELLED,
+)
+
+
+class LitdError(Exception):
+    """litd answered with an error, so the request definitely wasn't applied."""
+
+
+class LitdUnreachableError(Exception):
+    """No answer from litd. A request that changes state may or may not have
+    been applied."""
 
 
 class LitdConnection(NamedTuple):
@@ -99,16 +186,38 @@ def _litd_connection() -> LitdConnection:
     return LitdConnection(use_grpc, endpoint, cert, macaroon_hex)
 
 
-async def loop_call(method: str) -> dict:
-    """Call a Loop RPC through litd and return the response as JSON."""
+async def litd_call(rpc: Rpc, request: Message, timeout: float = 15) -> Any:
+    """
+    Call an RPC on litd over the same protocol LNbits uses and return the
+    response message. Raises LitdError or LitdUnreachableError.
+    """
     conn = _litd_connection()
     if conn.use_grpc:
-        return await _loop_grpc_call(conn, method)
-    return await _loop_rest_call(conn, method)
+        return await _grpc_call(conn, rpc, request, timeout)
+    return await _rest_call(conn, rpc, request, timeout)
 
 
-async def _loop_rest_call(conn: LitdConnection, method: str) -> dict:
-    path = _LOOP_METHODS[method][0]
+async def litd_json(rpc: Rpc, request: Message | None = None) -> dict:
+    """Like litd_call, but returns JSON for the admin views."""
+    try:
+        response = await litd_call(rpc, request or rpc.request())
+    except (LitdError, LitdUnreachableError) as exc:
+        raise HTTPException(HTTPStatus.BAD_GATEWAY, str(exc)) from exc
+    return message_to_dict(response)
+
+
+def message_to_dict(message: Message) -> dict:
+    # Same JSON shape as litd's REST gateway (proto field names, defaults shown).
+    return json_format.MessageToDict(
+        message,
+        preserving_proto_field_name=True,
+        always_print_fields_with_no_presence=True,
+    )
+
+
+async def _rest_call(
+    conn: LitdConnection, rpc: Rpc, request: Message, timeout: float
+) -> Any:
     headers = {
         "Grpc-Metadata-macaroon": conn.macaroon,
         "User-Agent": settings.user_agent,
@@ -119,31 +228,40 @@ async def _loop_rest_call(conn: LitdConnection, method: str) -> dict:
             base_url=conn.endpoint,
             headers=headers,
             verify=conn.cert or True,
-            timeout=15,
+            timeout=timeout,
         ) as client:
-            r = await client.get(path)
+            r = await client.request(
+                rpc.rest_method,
+                rpc.rest_path(request),
+                json=(
+                    json_format.MessageToDict(
+                        request, preserving_proto_field_name=True
+                    )
+                    if rpc.rest_method == "POST"
+                    else None
+                ),
+            )
     except httpx.HTTPError as exc:
-        raise HTTPException(
-            HTTPStatus.BAD_GATEWAY, f"Unable to connect to litd at {conn.endpoint}."
+        raise LitdUnreachableError(
+            f"Unable to connect to litd at {conn.endpoint}."
         ) from exc
 
     try:
         data = r.json()
     except ValueError as exc:
-        raise HTTPException(
-            HTTPStatus.BAD_GATEWAY, "litd returned an invalid response."
-        ) from exc
+        raise LitdUnreachableError("litd returned an invalid response.") from exc
     if r.is_error:
         message = data.get("message") if isinstance(data, dict) else None
-        raise HTTPException(HTTPStatus.BAD_GATEWAY, f"litd: {message or r.text}")
-    return data
+        code = data.get("code") if isinstance(data, dict) else None
+        if code in [c.value[0] for c in _AMBIGUOUS_CODES]:
+            raise LitdUnreachableError(f"litd: {message or r.text}")
+        raise LitdError(f"litd: {message or r.text}")
+    return json_format.ParseDict(data, rpc.response(), ignore_unknown_fields=True)
 
 
-async def _loop_grpc_call(conn: LitdConnection, method: str) -> dict:
-    _, request_name, response_name = _LOOP_METHODS[method]
-    request_cls = _loop_message(request_name)
-    response_cls = _loop_message(response_name)
-
+async def _grpc_call(
+    conn: LitdConnection, rpc: Rpc, request: Message, timeout: float
+) -> Any:
     assert conn.cert
     with open(conn.cert, "rb") as f:
         cert = f.read()
@@ -157,23 +275,14 @@ async def _loop_grpc_call(conn: LitdConnection, method: str) -> dict:
     )
     try:
         async with grpc.aio.secure_channel(conn.endpoint, creds) as channel:
-            rpc = channel.unary_unary(
-                f"/looprpc.SwapClient/{method}",
-                request_serializer=request_cls.SerializeToString,
-                response_deserializer=response_cls.FromString,
+            call = channel.unary_unary(
+                rpc.grpc_path,
+                request_serializer=rpc.request.SerializeToString,
+                response_deserializer=rpc.response.FromString,
             )
-            response = await rpc(request_cls(), timeout=15)
+            return await call(request, timeout=timeout)
     except grpc.aio.AioRpcError as exc:
-        # Keep litd's details even for UNAVAILABLE: litd itself returns that
-        # code when it can't reach Loop, e.g. a remote loopd that isn't up.
-        raise HTTPException(
-            HTTPStatus.BAD_GATEWAY,
-            f"litd at {conn.endpoint}: {exc.code().name}: {exc.details()}",
-        ) from exc
-
-    # Same JSON shape as litd's REST gateway (proto field names, defaults shown).
-    return json_format.MessageToDict(
-        response,
-        preserving_proto_field_name=True,
-        always_print_fields_with_no_presence=True,
-    )
+        message = f"litd at {conn.endpoint}: {exc.code().name}: {exc.details()}"
+        if exc.code() in _AMBIGUOUS_CODES:
+            raise LitdUnreachableError(message) from exc
+        raise LitdError(message) from exc

@@ -1,16 +1,125 @@
 // Subset of looprpc/client.proto from github.com/lightninglabs/loop
 // (looprpc v1.0.16, the version litd pins). Only the RPCs this extension
-// calls are kept, so it doesn't import lnrpc/lightning.proto, which would
-// clash with the lnrpc messages LNbits core already registers. Messages are
-// copied verbatim so they stay wire compatible.
+// calls are kept, so it doesn't import lnrpc/lightning.proto. Messages keep
+// upstream's field numbers and types so they stay wire compatible.
 syntax = "proto3";
 
 package looprpc;
 
 service SwapClient {
+    rpc LoopOut (LoopOutRequest) returns (SwapResponse);
+    rpc ListSwaps (ListSwapsRequest) returns (ListSwapsResponse);
+    rpc SwapInfo (SwapInfoRequest) returns (SwapStatus);
     rpc LoopOutTerms (TermsRequest) returns (OutTermsResponse);
+    rpc LoopOutQuote (QuoteRequest) returns (OutQuoteResponse);
     rpc GetLoopInTerms (TermsRequest) returns (InTermsResponse);
     rpc GetInfo (GetInfoRequest) returns (GetInfoResponse);
+}
+
+// Unused fields (assets, accounts, reservations, static addresses) are left
+// out; field numbers match upstream.
+message LoopOutRequest {
+    int64 amt = 1;
+    string dest = 2;
+    int64 max_swap_routing_fee = 3;
+    int64 max_prepay_routing_fee = 4;
+    int64 max_swap_fee = 5;
+    int64 max_prepay_amt = 6;
+    int64 max_miner_fee = 7;
+    repeated uint64 outgoing_chan_set = 11;
+    int32 sweep_conf_target = 9;
+    int32 htlc_confirmations = 13;
+    uint64 swap_publication_deadline = 10;
+    string label = 12;
+    string initiator = 14;
+    bool is_external_addr = 17;
+    uint32 payment_timeout = 19;
+}
+
+message SwapResponse {
+    string id = 1 [deprecated = true];
+    bytes id_bytes = 3;
+    string htlc_address = 2 [deprecated = true];
+    reserved 4;
+    string htlc_address_p2wsh = 5;
+    string htlc_address_p2tr = 7;
+    string server_message = 6;
+}
+
+message ListSwapsRequest {
+    ListSwapsFilter list_swap_filter = 1;
+    uint64 max_swaps = 2;
+}
+
+// Unused fields (channel set, last hop, assets) are left out.
+message ListSwapsFilter {
+    enum SwapTypeFilter {
+        ANY = 0;
+        LOOP_OUT = 1;
+        LOOP_IN = 2;
+    }
+    SwapTypeFilter swap_type = 1;
+    bool pending_only = 2;
+    string label = 4;
+    int64 start_timestamp_ns = 7;
+}
+
+message ListSwapsResponse {
+    repeated SwapStatus swaps = 1;
+    int64 next_start_time = 2;
+}
+
+message SwapInfoRequest {
+    bytes id = 1;
+}
+
+enum SwapType {
+    LOOP_OUT = 0;
+    LOOP_IN = 1;
+    STATIC_LOOP_IN = 2;
+}
+
+enum SwapState {
+    INITIATED = 0;
+    PREIMAGE_REVEALED = 1;
+    HTLC_PUBLISHED = 2;
+    SUCCESS = 3;
+    FAILED = 4;
+    INVOICE_SETTLED = 5;
+}
+
+enum FailureReason {
+    FAILURE_REASON_NONE = 0;
+    FAILURE_REASON_OFFCHAIN = 1;
+    FAILURE_REASON_TIMEOUT = 2;
+    FAILURE_REASON_SWEEP_TIMEOUT = 3;
+    FAILURE_REASON_INSUFFICIENT_VALUE = 4;
+    FAILURE_REASON_TEMPORARY = 5;
+    FAILURE_REASON_INCORRECT_AMOUNT = 6;
+    FAILURE_REASON_ABANDONED = 7;
+    FAILURE_REASON_INSUFFICIENT_CONFIRMED_BALANCE = 8;
+    FAILURE_REASON_INCORRECT_HTLC_AMT_SWEPT = 9;
+}
+
+// Unused fields (static loop in state, asset info) are left out.
+message SwapStatus {
+    int64 amt = 1;
+    string id = 2 [deprecated = true];
+    bytes id_bytes = 11;
+    SwapType type = 3;
+    SwapState state = 4;
+    FailureReason failure_reason = 14;
+    int64 initiation_time = 5;
+    int64 last_update_time = 6;
+    string htlc_address = 7 [deprecated = true];
+    string htlc_address_p2wsh = 12;
+    string htlc_address_p2tr = 18;
+    int64 cost_server = 8;
+    int64 cost_onchain = 9;
+    int64 cost_offchain = 10;
+    bytes last_hop = 16;
+    repeated uint64 outgoing_chan_set = 17;
+    string label = 15;
 }
 
 message TermsRequest {
@@ -28,6 +137,23 @@ message InTermsResponse {
     reserved 1, 2, 3, 4, 7;
     int64 min_swap_amount = 5;
     int64 max_swap_amount = 6;
+}
+
+// Unused fields (loop in hints, deposits, assets) are left out.
+message QuoteRequest {
+    int64 amt = 1;
+    int32 conf_target = 2;
+    uint64 swap_publication_deadline = 4;
+}
+
+// Unused fields (asset rfq info) are left out.
+message OutQuoteResponse {
+    int64 swap_fee_sat = 1;
+    int64 prepay_amt_sat = 2;
+    int64 htlc_sweep_fee_sat = 3;
+    bytes swap_payment_dest = 4;
+    int32 cltv_delta = 5;
+    int32 conf_target = 6;
 }
 
 message GetInfoRequest {
