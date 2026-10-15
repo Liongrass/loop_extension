@@ -76,6 +76,9 @@ from .models import CreateLoopOut, LoopOutQuote, LoopOutTerms, LoopSwap
 EXT_ID = "loop"
 # Same defaults as the loop CLI.
 MINER_FEE_MULTIPLIER = 250
+# Sent to the swap server as part of loopd's user agent. Loop drops any
+# character but letters, digits, '-', '.' and spaces.
+INITIATOR = f"LNbits Loop {settings.version}"
 # Without fast, the server may wait this long to publish the HTLC, so it can
 # batch swaps and wait for lower fees.
 SWAP_WAIT_TIME = 30 * 60
@@ -287,7 +290,7 @@ async def start_loop_out(wallet: Wallet, data: CreateLoopOut) -> LoopSwap:
         sweep_conf_target=data.conf_target,
         swap_publication_deadline=_publication_deadline(data.fast),
         label=_label(swap_id),
-        initiator="lnbits",
+        initiator=INITIATOR,
         is_external_addr=True,
     )
 
