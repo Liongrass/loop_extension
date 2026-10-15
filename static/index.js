@@ -2,7 +2,13 @@ window.PageLoop = {
   template: '#page-loop',
   data() {
     return {
-      form: {wallet: null, amount: null, address: ''},
+      form: {
+        wallet: null,
+        amount: null,
+        address: '',
+        conf_target: 9,
+        fast: false
+      },
       quote: null,
       quoteDialog: {show: false},
       quoting: false,
@@ -82,6 +88,12 @@ window.PageLoop = {
         return `At most ${this.sat(this.terms.max_swap_amount)}`
       return true
     },
+    confTargetRule(value) {
+      return (
+        (Number.isInteger(value) && value >= 2 && value <= 100) ||
+        'Between 2 and 100 blocks'
+      )
+    },
     statusColor(status) {
       return (
         {success: 'positive', failed: 'negative', unknown: 'warning'}[status] ||
@@ -93,7 +105,8 @@ window.PageLoop = {
       try {
         const {data} = await LNbits.api.request(
           'GET',
-          `/loop/api/v1/quote?amount=${this.form.amount}`,
+          `/loop/api/v1/quote?amount=${this.form.amount}` +
+            `&conf_target=${this.form.conf_target}&fast=${this.form.fast}`,
           this.selectedWallet.inkey
         )
         this.quote = data
@@ -114,6 +127,8 @@ window.PageLoop = {
           {
             amount: this.form.amount,
             address: this.form.address,
+            conf_target: this.form.conf_target,
+            fast: this.form.fast,
             max_total: this.quote.max_total
           }
         )

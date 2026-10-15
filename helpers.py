@@ -61,7 +61,10 @@ LOOP_OUT_QUOTE = _loop_rpc(
     "QuoteRequest",
     "OutQuoteResponse",
     "GET",
-    lambda r: f"/v1/loop/out/quote/{r.amt}?conf_target={r.conf_target}",
+    lambda r: (
+        f"/v1/loop/out/quote/{r.amt}?conf_target={r.conf_target}"
+        f"&swap_publication_deadline={r.swap_publication_deadline}"
+    ),
 )
 LOOP_OUT = _loop_rpc("LoopOut", "LoopOutRequest", "SwapResponse", "POST", "/v1/loop/out")
 LIST_SWAPS = _loop_rpc(

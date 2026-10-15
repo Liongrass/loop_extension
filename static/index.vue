@@ -41,6 +41,26 @@
               type="text"
               label="Bitcoin address *"
             ></q-input>
+            <q-input
+              filled
+              dense
+              v-model.number="form.conf_target"
+              type="number"
+              min="2"
+              max="100"
+              label="Confirmation target (blocks)"
+              hint="How quickly the on-chain sweep should confirm"
+              :rules="[confTargetRule]"
+            ></q-input>
+            <q-checkbox
+              dense
+              v-model="form.fast"
+              label="Fast"
+            ></q-checkbox>
+            <div class="text-caption q-mt-none">
+              Without fast, the swap server may wait up to 30 minutes before
+              publishing, for a lower fee.
+            </div>
             <q-btn
               unelevated
               color="primary"

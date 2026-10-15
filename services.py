@@ -75,8 +75,10 @@ from .models import CreateLoopOut, LoopOutQuote, LoopOutTerms, LoopSwap
 
 EXT_ID = "loop"
 # Same defaults as the loop CLI.
-SWEEP_CONF_TARGET = 9
 MINER_FEE_MULTIPLIER = 250
+# Without fast, the server may wait this long to publish the HTLC, so it can
+# batch swaps and wait for lower fees.
+SWAP_WAIT_TIME = 30 * 60
 # How long to look for loopd's payments in lnd right after LoopOut.
 FIND_PAYMENTS_ATTEMPTS = 10
 FIND_PAYMENTS_INTERVAL = 2
@@ -118,8 +120,17 @@ async def get_terms() -> LoopOutTerms:
     )
 
 
-async def get_quote(amount: int) -> LoopOutQuote:
-    request = LOOP_OUT_QUOTE.request(amt=amount, conf_target=SWEEP_CONF_TARGET)
+def _publication_deadline(fast: bool) -> int:
+    # Same as the loop CLI's --fast flag.
+    return int(time.time()) + (0 if fast else SWAP_WAIT_TIME)
+
+
+async def get_quote(amount: int, conf_target: int, fast: bool) -> LoopOutQuote:
+    request = LOOP_OUT_QUOTE.request(
+        amt=amount,
+        conf_target=conf_target,
+        swap_publication_deadline=_publication_deadline(fast),
+    )
     try:
         quote = await litd_call(LOOP_OUT_QUOTE, request)
     except LitdError as exc:
@@ -144,6 +155,7 @@ async def get_quote(amount: int) -> LoopOutQuote:
         max_swap_routing_fee=max_swap_routing_fee,
         max_prepay_routing_fee=max_prepay_routing_fee,
         conf_target=quote.conf_target,
+        fast=fast,
         server_pubkey=quote.swap_payment_dest.hex(),
         max_total=max_total,
     )
@@ -242,7 +254,7 @@ async def _release_reservation(swap: LoopSwap, reason: str) -> None:
 
 async def start_loop_out(wallet: Wallet, data: CreateLoopOut) -> LoopSwap:
     await _check_wallet(wallet, data.amount * 1000)
-    quote = await get_quote(data.amount)
+    quote = await get_quote(data.amount, data.conf_target, data.fast)
     if quote.max_total > data.max_total:
         raise HTTPException(
             HTTPStatus.CONFLICT,
@@ -272,7 +284,8 @@ async def start_loop_out(wallet: Wallet, data: CreateLoopOut) -> LoopSwap:
         max_swap_fee=quote.swap_fee,
         max_prepay_amt=quote.prepay_amount,
         max_miner_fee=quote.max_miner_fee,
-        sweep_conf_target=SWEEP_CONF_TARGET,
+        sweep_conf_target=data.conf_target,
+        swap_publication_deadline=_publication_deadline(data.fast),
         label=_label(swap_id),
         initiator="lnbits",
         is_external_addr=True,

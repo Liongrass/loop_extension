@@ -2,6 +2,11 @@ from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field
 
+# loopd's minimum sweep confirmation target is 2.
+MIN_CONF_TARGET = 2
+MAX_CONF_TARGET = 100
+DEFAULT_CONF_TARGET = 9
+
 
 class LoopOutTerms(BaseModel):
     min_swap_amount: int
@@ -17,6 +22,7 @@ class LoopOutQuote(BaseModel):
     max_swap_routing_fee: int
     max_prepay_routing_fee: int
     conf_target: int
+    fast: bool
     server_pubkey: str
     # What the wallet must hold: everything paid over Lightning in the worst
     # case. The miner fee comes out of the on-chain amount instead.
@@ -26,6 +32,11 @@ class LoopOutQuote(BaseModel):
 class CreateLoopOut(BaseModel):
     amount: int = Field(gt=0)
     address: str = Field(min_length=1, max_length=100)
+    conf_target: int = Field(
+        DEFAULT_CONF_TARGET, ge=MIN_CONF_TARGET, le=MAX_CONF_TARGET
+    )
+    # Let the server publish the HTLC right away, for a higher fee.
+    fast: bool = False
     # The max_total of the quote the user approved. The swap is refused if a
     # fresh quote would need more.
     max_total: int = Field(gt=0)

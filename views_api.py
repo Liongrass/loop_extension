@@ -6,6 +6,9 @@ from lnbits.decorators import check_admin, require_admin_key, require_invoice_ke
 from .crud import get_all_swaps, get_swaps
 from .helpers import GET_INFO, litd_json
 from .models import (
+    DEFAULT_CONF_TARGET,
+    MAX_CONF_TARGET,
+    MIN_CONF_TARGET,
     AdminLoopSwap,
     CreateLoopOut,
     LoopOutQuote,
@@ -34,8 +37,14 @@ async def api_loop_out_terms() -> LoopOutTerms:
 @loop_api_router.get(
     "/api/v1/quote", dependencies=[Depends(require_invoice_key)]
 )
-async def api_loop_out_quote(amount: int = Query(gt=0)) -> LoopOutQuote:
-    return await get_quote(amount)
+async def api_loop_out_quote(
+    amount: int = Query(gt=0),
+    conf_target: int = Query(
+        DEFAULT_CONF_TARGET, ge=MIN_CONF_TARGET, le=MAX_CONF_TARGET
+    ),
+    fast: bool = Query(False),
+) -> LoopOutQuote:
+    return await get_quote(amount, conf_target, fast)
 
 
 @loop_api_router.post("/api/v1/swaps")
