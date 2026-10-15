@@ -29,9 +29,11 @@ import asyncio
 import math
 import time
 import uuid
+from datetime import datetime
 from http import HTTPStatus
 
 from bolt11 import Bolt11, MilliSatoshi, Tags
+from bolt11 import decode as bolt11_decode
 from bolt11 import encode as bolt11_encode
 from fastapi import HTTPException
 from lnbits.core.crud import (
@@ -163,6 +165,11 @@ def _fake_bolt11(payment_hash: str, payment_secret: str, msat: int, memo: str):
     return bolt11_encode(invoice, fake_privkey(settings.fake_wallet_secret))
 
 
+def _expiry(bolt11: str) -> datetime:
+    # Like core's pay_invoice. Without it the UI shows the Unix epoch.
+    return bolt11_decode(bolt11).expiry_date
+
+
 async def _check_wallet(wallet: Wallet, amount_msat: int) -> None:
     if settings.lnbits_only_allow_incoming_payments:
         raise HTTPException(HTTPStatus.FORBIDDEN, "Only incoming payments allowed.")
@@ -203,12 +210,14 @@ async def _reserve(swap: LoopSwap, quote: LoopOutQuote) -> None:
         amount_msat = (quote.amount + quote.swap_fee) * 1000
         memo = f"Loop Out to {swap.address} (starting)"
         payment_secret, payment_hash = random_secret_and_hash()
+        bolt11 = _fake_bolt11(payment_hash, payment_secret, amount_msat, memo)
         await create_payment(
             checking_id=swap.swap_checking_id,
             data=CreatePayment(
                 wallet_id=swap.wallet,
                 payment_hash=payment_hash,
-                bolt11=_fake_bolt11(payment_hash, payment_secret, amount_msat, memo),
+                bolt11=bolt11,
+                expiry=_expiry(bolt11),
                 amount_msat=-amount_msat,
                 fee=quote.max_total * 1000 - amount_msat,
                 memo=memo,
@@ -363,6 +372,7 @@ async def _record_payments(swap: LoopSwap, since: int, match_prepay: bool) -> No
         await _record_prepay(swap, prepays[0] if len(prepays) == 1 else None)
 
     placeholder.bolt11 = swap_payment.payment_request
+    placeholder.expiry = _expiry(swap_payment.payment_request)
     placeholder.payment_hash = swap.swap_hash
     placeholder.amount = -swap_payment.value_msat
     placeholder.fee = -_reserve_msat(
@@ -394,6 +404,7 @@ async def _record_prepay(swap: LoopSwap, prepay) -> None:
             wallet_id=swap.wallet,
             payment_hash=payment_hash,
             bolt11=bolt11,
+            expiry=_expiry(bolt11),
             amount_msat=-amount_msat,
             fee=_reserve_msat(amount_msat // 1000, swap.max_prepay_routing_fee),
             memo=memo,
@@ -574,6 +585,7 @@ async def _credit_service_fee(payment: Payment, service_fee_msat: int) -> None:
         data=CreatePayment(
             wallet_id=settings.lnbits_service_fee_wallet,
             bolt11=payment.bolt11,
+            expiry=payment.expiry,
             payment_hash=payment.payment_hash,
             amount_msat=service_fee_msat,
             memo=(
