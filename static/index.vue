@@ -177,59 +177,21 @@
         <q-markup-table dense flat>
           <tbody>
             <tr>
-              <td>To</td>
-              <td class="text-right" style="word-break: break-all">
-                <span v-text="form.address"></span>
-              </td>
-            </tr>
-            <tr>
-              <td>Amount</td>
+              <td>You pay over Lightning</td>
               <td class="text-right">
-                <span v-text="sat(quote.amount)"></span>
+                <span v-text="sat(quote.amount + quote.swap_fee)"></span>
               </td>
             </tr>
             <tr>
-              <td>Swap fee</td>
-              <td class="text-right">
-                <span v-text="sat(quote.swap_fee)"></span>
-              </td>
-            </tr>
-            <tr>
-              <td>
-                Routing fees (max)
-                <div class="text-caption">
-                  Prepay of <span v-text="sat(quote.prepay_amount)"></span> is
-                  part of the swap fee
-                </div>
-              </td>
+              <td>Estimated swap fee</td>
               <td class="text-right">
                 <span
-                  v-text="
-                    sat(quote.max_swap_routing_fee + quote.max_prepay_routing_fee)
-                  "
+                  v-text="sat(quote.swap_fee + quote.miner_fee_estimate)"
                 ></span>
               </td>
             </tr>
             <tr class="text-weight-bold">
-              <td>Taken from wallet (max)</td>
-              <td class="text-right">
-                <span v-text="sat(quote.max_total)"></span>
-              </td>
-            </tr>
-            <tr>
-              <td>
-                Miner fee (estimate)
-                <div class="text-caption">
-                  Deducted on-chain, up to
-                  <span v-text="sat(quote.max_miner_fee)"></span>
-                </div>
-              </td>
-              <td class="text-right">
-                <span v-text="sat(quote.miner_fee_estimate)"></span>
-              </td>
-            </tr>
-            <tr class="text-weight-bold">
-              <td>You receive on-chain (about)</td>
+              <td>You receive on-chain</td>
               <td class="text-right">
                 <span
                   v-text="sat(quote.amount - quote.miner_fee_estimate)"
@@ -239,8 +201,7 @@
           </tbody>
         </q-markup-table>
         <p class="text-caption q-mt-md q-mb-none">
-          Unused fees are returned when the swap completes. Swaps can take a
-          while: the on-chain transaction has to confirm first.
+          Swaps can take a while: the on-chain transaction has to confirm first.
         </p>
         <div class="row q-mt-lg">
           <q-btn
