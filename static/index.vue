@@ -92,6 +92,21 @@
           no-data-label="No swaps yet"
           v-model:pagination="swapsTable.pagination"
         >
+          <template v-slot:body-cell-copy="props">
+            <q-td :props="props" auto-width>
+              <q-btn
+                v-if="props.row.swap_hash"
+                flat
+                dense
+                round
+                size="sm"
+                icon="info_outline"
+                @click="copySwapId(props.row)"
+              >
+                <q-tooltip>Copy swap id</q-tooltip>
+              </q-btn>
+            </q-td>
+          </template>
           <template v-slot:body-cell-status="props">
             <q-td :props="props">
               <q-badge

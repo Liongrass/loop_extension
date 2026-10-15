@@ -44,7 +44,8 @@ window.PageLoop = {
             align: 'right',
             format: (_, row) =>
               this.sat(row.cost_server + row.cost_onchain + row.cost_offchain)
-          }
+          },
+          {name: 'copy', label: '', align: 'right'}
         ],
         pagination: {rowsPerPage: 10}
       },
@@ -66,7 +67,7 @@ window.PageLoop = {
     allSwapsColumns() {
       return [
         {name: 'wallet', label: 'Wallet', align: 'left', field: 'wallet'},
-        ...this.swapsTable.columns
+        ...this.swapsTable.columns.filter(c => c.name !== 'copy')
       ]
     },
     selectedWallet() {
@@ -93,6 +94,9 @@ window.PageLoop = {
         (Number.isInteger(value) && value >= 2 && value <= 100) ||
         'Between 2 and 100 blocks'
       )
+    },
+    copySwapId(swap) {
+      LNbits.utils.copyText(swap.swap_hash, 'Swap id copied to clipboard')
     },
     statusColor(status) {
       return (
