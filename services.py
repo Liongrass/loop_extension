@@ -10,7 +10,8 @@ balance.
 Both payments use internal_ checking_ids, so core's pending checker leaves
 them alone: loopd retries a timed out payment under the same hash, and core
 would otherwise mark it failed (releasing the user's funds) before the retry
-succeeds. Instead, this extension settles them from lnd once the swap is final.
+succeeds. Instead, this extension settles them from lnd itself: a success as
+soon as lnd reports it, a failure only once the swap is final.
 
 Lifecycle of a swap:
 1. A placeholder payment reserves the worst case in the wallet, under core's
@@ -22,7 +23,7 @@ Lifecycle of a swap:
    time. If it can't be matched unambiguously, it's settled from Loop's final
    swap costs instead.
 4. A background task follows the swap with SwapInfo and settles both payments
-   with lnd once the swap is final.
+   with lnd (failures only once the swap is final).
 """
 
 import asyncio
@@ -447,19 +448,20 @@ async def _sync_swap(swap: LoopSwap) -> None:
     swap.cost_server = status.cost_server
     swap.cost_onchain = status.cost_onchain
     swap.cost_offchain = status.cost_offchain
-    if swap.loop_state in ("SUCCESS", "FAILED"):
+    final = swap.loop_state in ("SUCCESS", "FAILED")
+    if swap.payments_recorded:
+        swap.done = await _settle_payments(swap, final)
+    if final:
         swap.status = swap.loop_state.lower()
-        if swap.payments_recorded:
-            swap.done = await _settle_payments(swap)
-        elif swap.status == "failed" and not (swap.cost_server or swap.cost_offchain):
+    if final and not swap.payments_recorded:
+        if swap.status == "failed" and not (swap.cost_server or swap.cost_offchain):
             # Failed before loopd paid anything.
             await _release_reservation(swap, swap.failure_reason or "FAILED")
             return
-        else:
-            logger.error(
-                f"Loop Out {swap.id}: final, but its payments weren't found "
-                "in lnd. The reservation stays until an admin settles it."
-            )
+        logger.error(
+            f"Loop Out {swap.id}: final, but its payments weren't found "
+            "in lnd. The reservation stays until an admin settles it."
+        )
     await update_swap(swap)
 
 
@@ -490,8 +492,13 @@ async def _resolve_unknown(swap: LoopSwap) -> None:
         await _release_reservation(swap, "Loop Out was not started.")
 
 
-async def _settle_payments(swap: LoopSwap) -> bool:
-    """Settle both payments from lnd. True once both are final."""
+async def _settle_payments(swap: LoopSwap, swap_final: bool) -> bool:
+    """
+    Settle both payments from lnd. Successes are settled as soon as lnd has
+    them: the preimage is out, nothing can undo them. Failures only once the
+    swap is final, because until then loopd may retry a payment under the same
+    hash. True once the swap is final and both payments are.
+    """
     assert swap.swap_hash and swap.prepay_checking_id
     swap_payment = await get_standalone_payment(swap.swap_checking_id)
     prepay = await get_standalone_payment(swap.prepay_checking_id)
@@ -499,22 +506,25 @@ async def _settle_payments(swap: LoopSwap) -> bool:
         logger.error(f"Loop Out {swap.id}: payment records missing")
         return False
 
-    swap_payment = await _settle_from_lnd(swap_payment, swap.swap_hash)
+    swap_payment = await _settle_from_lnd(swap_payment, swap.swap_hash, swap_final)
     if swap.prepay_hash:
-        prepay = await _settle_from_lnd(prepay, swap.prepay_hash)
-    else:
+        prepay = await _settle_from_lnd(prepay, swap.prepay_hash, swap_final)
+    elif swap_final:
+        # Needs Loop's final costs.
         prepay = await _settle_from_costs(swap, swap_payment, prepay)
-    return not swap_payment.pending and not prepay.pending
+    return swap_final and not swap_payment.pending and not prepay.pending
 
 
-async def _settle_from_lnd(payment: Payment, payment_hash: str) -> Payment:
+async def _settle_from_lnd(
+    payment: Payment, payment_hash: str, accept_failure: bool
+) -> Payment:
     if not payment.pending:
         return payment
     status = await get_funding_source().get_payment_status(payment_hash)
     if status.success:
         payment.preimage = payment.preimage or status.preimage
         return await _mark_success(payment, abs(status.fee_msat or 0))
-    if status.failed:
+    if status.failed and accept_failure:
         payment.status = PaymentState.FAILED
         return await update_payment(payment)
     return payment
