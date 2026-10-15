@@ -46,7 +46,6 @@ from lnbits.core.services.payments import (
     fee_reserve,
     payment_lock,
     service_fee,
-    update_payment_success_status,
     wallets_payments_lock,
 )
 from lnbits.decorators import check_user_extension_access
@@ -490,7 +489,8 @@ async def _settle_from_lnd(payment: Payment, payment_hash: str) -> Payment:
         return payment
     status = await get_funding_source().get_payment_status(payment_hash)
     if status.success:
-        return await update_payment_success_status(payment, status)
+        payment.preimage = payment.preimage or status.preimage
+        return await _mark_success(payment, abs(status.fee_msat or 0))
     if status.failed:
         payment.status = PaymentState.FAILED
         return await update_payment(payment)
@@ -506,10 +506,10 @@ async def _settle_from_costs(
     if swap_payment.success:
         # cost_server = swap invoice + prepay - amount
         prepay_sat = swap.cost_server + swap.amount - abs(swap_payment.amount) // 1000
-        swap_routing_sat = (
-            abs(swap_payment.fee) - service_fee(abs(swap_payment.amount))
-        ) // 1000
-        routing_sat = max(0, swap.cost_offchain - swap_routing_sat)
+        swap_routing_msat = abs(swap_payment.fee) - await _charged_service_fee(
+            swap_payment
+        )
+        routing_sat = max(0, swap.cost_offchain - swap_routing_msat // 1000)
     else:
         # A failed swap only costs the prepay, if the server took it.
         prepay_sat = swap.cost_server
@@ -517,8 +517,58 @@ async def _settle_from_costs(
 
     if prepay_sat <= 0:
         prepay.status = PaymentState.FAILED
-    else:
-        prepay.status = PaymentState.SUCCESS
-        prepay.amount = -prepay_sat * 1000
-        prepay.fee = -(routing_sat * 1000 + service_fee(prepay_sat * 1000))
-    return await update_payment(prepay)
+        return await update_payment(prepay)
+    prepay.amount = -prepay_sat * 1000
+    return await _mark_success(prepay, routing_sat * 1000)
+
+
+def _service_fee_checking_id(payment: Payment) -> str:
+    # Same checking_id core uses for its service fee records.
+    return f"service_fee_{payment.payment_hash}"
+
+
+async def _charged_service_fee(payment: Payment) -> int:
+    record = await get_standalone_payment(_service_fee_checking_id(payment))
+    return record.amount if record else 0
+
+
+async def _mark_success(payment: Payment, routing_fee_msat: int) -> Payment:
+    """
+    Mark a payment successful, charging the routing fee plus LNbits' service
+    fee, and credit that same service fee to the service fee wallet.
+
+    Core's _credit_service_fee_wallet isn't used: it computes the fee as for an
+    internal payment (these use internal_ checking_ids), and credits when the
+    payment is created rather than when it succeeds.
+    """
+    service_fee_msat = service_fee(payment.amount)
+    if service_fee_msat:
+        await _credit_service_fee(payment, service_fee_msat)
+    payment.status = PaymentState.SUCCESS
+    payment.fee = -(routing_fee_msat + service_fee_msat)
+    return await update_payment(payment)
+
+
+async def _credit_service_fee(payment: Payment, service_fee_msat: int) -> None:
+    # Credited before the payment is marked successful; if that update is
+    # lost, the next sync finds this record and doesn't credit twice.
+    checking_id = _service_fee_checking_id(payment)
+    if await get_standalone_payment(checking_id):
+        return
+    wallet = await get_wallet(payment.wallet_id)
+    wallet_name = wallet.name if wallet else ""
+    await create_payment(
+        checking_id=checking_id,
+        data=CreatePayment(
+            wallet_id=settings.lnbits_service_fee_wallet,
+            bolt11=payment.bolt11,
+            payment_hash=payment.payment_hash,
+            amount_msat=service_fee_msat,
+            memo=(
+                f"Service fee for payment of {abs(payment.sat)} sats. "
+                f"Wallet: '{wallet_name}' ({payment.wallet_id})."
+            ),
+            extension=EXT_ID,
+        ),
+        status=PaymentState.SUCCESS,
+    )
