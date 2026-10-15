@@ -1,0 +1,39 @@
+
+ê	
+
+loop.protolooprpc"
+TermsRequest"Ã
+OutTermsResponse&
+min_swap_amount (RminSwapAmount&
+max_swap_amount (RmaxSwapAmount$
+min_cltv_delta (RminCltvDelta$
+max_cltv_delta	 (RmaxCltvDeltaJJJJJ"
+InTermsResponse&
+min_swap_amount (RminSwapAmount&
+max_swap_amount (RmaxSwapAmountJJJJJ"
+GetInfoRequest"·
+GetInfoResponse
+version (	Rversion
+network (	Rnetwork
+
+rpc_listen (	R	rpcListen
+rest_listen (	R
+restListen#
+macaroon_path (	RmacaroonPath"
+tls_cert_path (	RtlsCertPath8
+loop_out_stats (2.looprpc.LoopStatsRloopOutStats6
+loop_in_stats (2.looprpc.LoopStatsRloopInStats
+commit_hash	 (	R
+commitHash"»
+	LoopStats#
+pending_count (RpendingCount#
+success_count (RsuccessCount
+
+fail_count (R	failCount&
+sum_pending_amt (RsumPendingAmt*
+sum_succeeded_amt (RsumSucceededAmt2œ
+
+SwapClient@
+LoopOutTerms.looprpc.TermsRequest.looprpc.OutTermsResponseA
+GetLoopInTerms.looprpc.TermsRequest.looprpc.InTermsResponse<
+GetInfo.looprpc.GetInfoRequest.looprpc.GetInfoResponsebproto3

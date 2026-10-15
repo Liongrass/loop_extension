@@ -1,0 +1,54 @@
+// Subset of looprpc/client.proto from github.com/lightninglabs/loop
+// (looprpc v1.0.16, the version litd pins). Only the RPCs this extension
+// calls are kept, so it doesn't import lnrpc/lightning.proto, which would
+// clash with the lnrpc messages LNbits core already registers. Messages are
+// copied verbatim so they stay wire compatible.
+syntax = "proto3";
+
+package looprpc;
+
+service SwapClient {
+    rpc LoopOutTerms (TermsRequest) returns (OutTermsResponse);
+    rpc GetLoopInTerms (TermsRequest) returns (InTermsResponse);
+    rpc GetInfo (GetInfoRequest) returns (GetInfoResponse);
+}
+
+message TermsRequest {
+}
+
+message OutTermsResponse {
+    reserved 1, 2, 3, 4, 7;
+    int64 min_swap_amount = 5;
+    int64 max_swap_amount = 6;
+    int32 min_cltv_delta = 8;
+    int32 max_cltv_delta = 9;
+}
+
+message InTermsResponse {
+    reserved 1, 2, 3, 4, 7;
+    int64 min_swap_amount = 5;
+    int64 max_swap_amount = 6;
+}
+
+message GetInfoRequest {
+}
+
+message GetInfoResponse {
+    string version = 1;
+    string network = 2;
+    string rpc_listen = 3;
+    string rest_listen = 4;
+    string macaroon_path = 5;
+    string tls_cert_path = 6;
+    LoopStats loop_out_stats = 7;
+    LoopStats loop_in_stats = 8;
+    string commit_hash = 9;
+}
+
+message LoopStats {
+    uint64 pending_count = 1;
+    uint64 success_count = 2;
+    uint64 fail_count = 3;
+    int64 sum_pending_amt = 4;
+    int64 sum_succeeded_amt = 5;
+}
