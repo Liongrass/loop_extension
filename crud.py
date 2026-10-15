@@ -33,6 +33,13 @@ async def get_swaps(wallet_ids: list[str]) -> list[LoopSwap]:
     )
 
 
+async def get_all_swaps() -> list[LoopSwap]:
+    return await db.fetchall(
+        "SELECT * FROM loop.swaps ORDER BY created_at DESC",
+        model=LoopSwap,
+    )
+
+
 async def get_unfinished_swaps() -> list[LoopSwap]:
     return await db.fetchall(
         "SELECT * FROM loop.swaps WHERE done = :done ORDER BY created_at",

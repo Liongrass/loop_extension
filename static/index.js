@@ -46,12 +46,22 @@ window.PageLoop = {
       terms: null,
       info: null,
       showInfo: false,
-      loadingInfo: false
+      loadingInfo: false,
+      allSwaps: [],
+      allSwapsPagination: {rowsPerPage: 10},
+      showAllSwaps: false,
+      loadingAllSwaps: false
     }
   },
   computed: {
     isAdmin() {
       return Boolean(this.g.user && (this.g.user.admin || this.g.user.super_user))
+    },
+    allSwapsColumns() {
+      return [
+        {name: 'wallet', label: 'Wallet', align: 'left', field: 'wallet'},
+        ...this.swapsTable.columns
+      ]
     },
     selectedWallet() {
       return this.g.user.wallets.find(w => w.id === this.form.wallet)
@@ -158,6 +168,25 @@ window.PageLoop = {
     toggleInfo() {
       this.showInfo = !this.showInfo
       if (this.showInfo && !this.info) this.fetchInfo()
+    },
+    async fetchAllSwaps() {
+      this.loadingAllSwaps = true
+      try {
+        const {data} = await LNbits.api.request('GET', '/loop/api/v1/swaps/all')
+        this.allSwaps = data
+      } catch (error) {
+        LNbits.utils.notifyApiError(error)
+      } finally {
+        this.loadingAllSwaps = false
+      }
+    },
+    toggleAllSwaps() {
+      this.showAllSwaps = !this.showAllSwaps
+      if (this.showAllSwaps) this.fetchAllSwaps()
+    },
+    refreshAdmin() {
+      if (this.showInfo) this.fetchInfo()
+      if (this.showAllSwaps) this.fetchAllSwaps()
     }
   },
   created() {

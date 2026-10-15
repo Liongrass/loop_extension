@@ -65,3 +65,8 @@ class LoopSwap(BaseModel):
     done: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class AdminLoopSwap(LoopSwap):
+    # None if the wallet was deleted.
+    wallet_name: str | None = None

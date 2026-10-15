@@ -100,8 +100,9 @@
           <q-btn
             flat
             color="primary"
-            :loading="loadingInfo"
-            @click="fetchInfo"
+            :loading="loadingInfo || loadingAllSwaps"
+            :disable="!showInfo && !showAllSwaps"
+            @click="refreshAdmin"
           >
             Refresh
           </q-btn>
@@ -114,6 +115,15 @@
           >
             Get info
           </q-btn>
+          <q-btn
+            unelevated
+            color="primary"
+            class="q-ml-sm"
+            :icon-right="showAllSwaps ? 'expand_less' : 'expand_more'"
+            @click="toggleAllSwaps"
+          >
+            All swaps
+          </q-btn>
         </q-card-section>
         <q-slide-transition>
           <q-card-section v-show="showInfo">
@@ -123,6 +133,40 @@
               v-text="info ? pretty(info) : '—'"
             ></pre>
           </q-card-section>
+        </q-slide-transition>
+        <q-slide-transition>
+          <div v-show="showAllSwaps">
+            <q-table
+              dense
+              flat
+              :rows="allSwaps"
+              :columns="allSwapsColumns"
+              row-key="id"
+              no-data-label="No swaps yet"
+              v-model:pagination="allSwapsPagination"
+            >
+              <template v-slot:body-cell-wallet="props">
+                <q-td :props="props">
+                  <div v-text="props.row.wallet_name || '(deleted wallet)'"></div>
+                  <div class="text-caption" v-text="props.row.wallet"></div>
+                </q-td>
+              </template>
+              <template v-slot:body-cell-status="props">
+                <q-td :props="props">
+                  <q-badge
+                    :color="statusColor(props.row.status)"
+                    v-text="props.row.status"
+                  ></q-badge>
+                  <div
+                    v-if="props.row.failure_reason"
+                    class="text-caption text-negative"
+                    style="white-space: normal"
+                    v-text="props.row.failure_reason"
+                  ></div>
+                </q-td>
+              </template>
+            </q-table>
+          </div>
         </q-slide-transition>
       </q-card>
     </div>
