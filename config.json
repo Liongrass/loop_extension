@@ -1,7 +1,7 @@
 {
   "name": "Loop",
   "short_description": "Loop swaps through a litd funding source",
-  "tile": "/loop/static/loop.svg",
+  "tile": "/loop/static/loop.png",
   "min_lnbits_version": "1.0.0",
   "contributors": [
     {
