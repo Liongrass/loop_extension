@@ -56,9 +56,6 @@ GET_INFO = _loop_rpc(
 LOOP_OUT_TERMS = _loop_rpc(
     "LoopOutTerms", "TermsRequest", "OutTermsResponse", "GET", "/v1/loop/out/terms"
 )
-LOOP_IN_TERMS = _loop_rpc(
-    "GetLoopInTerms", "TermsRequest", "InTermsResponse", "GET", "/v1/loop/in/terms"
-)
 LOOP_OUT_QUOTE = _loop_rpc(
     "LoopOutQuote",
     "QuoteRequest",

@@ -7,6 +7,11 @@
           <p class="text-caption q-mb-none">
             Swap Lightning balance to an on-chain Bitcoin address.
           </p>
+          <p v-if="terms" class="text-caption q-mb-none">
+            Amount between
+            <span v-text="sat(terms.min_swap_amount)"></span> and
+            <span v-text="sat(terms.max_swap_amount)"></span>.
+          </p>
         </q-card-section>
         <q-card-section>
           <q-form @submit="getQuote" class="q-gutter-md">
@@ -27,6 +32,7 @@
               min="1"
               label="Amount (sat) *"
               hint="Arrives on-chain, minus the miner fee"
+              :rules="[amountRule]"
             ></q-input>
             <q-input
               filled
@@ -84,49 +90,42 @@
       </q-card>
     </div>
 
-    <template v-if="isAdmin">
-      <div class="col-12">
-        <q-card>
-          <q-card-section class="row items-center no-wrap">
-            <div class="col">
-              <h5 class="text-subtitle1 q-my-none">Admin: Loop via litd</h5>
-            </div>
-            <q-btn
-              unelevated
-              color="primary"
-              :loading="loading"
-              @click="fetchLoop"
-            >
-              Refresh
-            </q-btn>
-          </q-card-section>
-        </q-card>
-      </div>
-      <div class="col-12 col-md-6">
-        <q-card>
-          <q-card-section>
-            <h6 class="text-subtitle2 q-my-none">loop getinfo</h6>
+    <div v-if="isAdmin" class="col-12">
+      <q-card>
+        <q-card-section class="row items-center no-wrap">
+          <div class="col">
+            <h5 class="text-subtitle1 q-my-none">Loop daemon</h5>
+            <div class="text-caption">Only visible to admins</div>
+          </div>
+          <q-btn
+            flat
+            color="primary"
+            :loading="loadingInfo"
+            @click="fetchInfo"
+          >
+            Refresh
+          </q-btn>
+          <q-btn
+            unelevated
+            color="primary"
+            class="q-ml-sm"
+            :icon-right="showInfo ? 'expand_less' : 'expand_more'"
+            @click="toggleInfo"
+          >
+            Get info
+          </q-btn>
+        </q-card-section>
+        <q-slide-transition>
+          <q-card-section v-show="showInfo">
             <pre
-              class="q-mb-none"
+              class="q-my-none"
               style="white-space: pre-wrap; word-break: break-all"
               v-text="info ? pretty(info) : '—'"
             ></pre>
           </q-card-section>
-        </q-card>
-      </div>
-      <div class="col-12 col-md-6">
-        <q-card>
-          <q-card-section>
-            <h6 class="text-subtitle2 q-my-none">loop terms</h6>
-            <pre
-              class="q-mb-none"
-              style="white-space: pre-wrap; word-break: break-all"
-              v-text="terms ? pretty(terms) : '—'"
-            ></pre>
-          </q-card-section>
-        </q-card>
-      </div>
-    </template>
+        </q-slide-transition>
+      </q-card>
+    </div>
 
     <q-dialog v-model="quoteDialog.show">
       <q-card v-if="quote" class="q-pa-lg lnbits__dialog-card">

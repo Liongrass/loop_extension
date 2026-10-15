@@ -43,9 +43,10 @@ window.PageLoop = {
         pagination: {rowsPerPage: 10}
       },
       pollTimer: null,
-      info: null,
       terms: null,
-      loading: false
+      info: null,
+      showInfo: false,
+      loadingInfo: false
     }
   },
   computed: {
@@ -62,6 +63,14 @@ window.PageLoop = {
     },
     sat(value) {
       return `${LNbits.utils.formatSat(value)} sat`
+    },
+    amountRule(value) {
+      if (!this.terms || !value) return true
+      if (value < this.terms.min_swap_amount)
+        return `At least ${this.sat(this.terms.min_swap_amount)}`
+      if (value > this.terms.max_swap_amount)
+        return `At most ${this.sat(this.terms.max_swap_amount)}`
+      return true
     },
     statusColor(status) {
       return (
@@ -122,34 +131,45 @@ window.PageLoop = {
         LNbits.utils.notifyApiError(error)
       }
     },
-    async fetchLoop() {
-      this.loading = true
+    async getTerms() {
+      if (!this.g.user.wallets.length) return
       try {
-        const [info, terms] = await Promise.all([
-          LNbits.api.request('GET', '/loop/api/v1/info'),
-          LNbits.api.request('GET', '/loop/api/v1/terms')
-        ])
-        this.info = info.data
-        this.terms = terms.data
+        const {data} = await LNbits.api.request(
+          'GET',
+          '/loop/api/v1/terms',
+          this.g.user.wallets[0].inkey
+        )
+        this.terms = data
+      } catch (error) {
+        LNbits.utils.notifyApiError(error)
+      }
+    },
+    async fetchInfo() {
+      this.loadingInfo = true
+      try {
+        const {data} = await LNbits.api.request('GET', '/loop/api/v1/info')
+        this.info = data
       } catch (error) {
         LNbits.utils.notifyApiError(error)
       } finally {
-        this.loading = false
+        this.loadingInfo = false
       }
+    },
+    toggleInfo() {
+      this.showInfo = !this.showInfo
+      if (this.showInfo && !this.info) this.fetchInfo()
     }
   },
   created() {
     if (this.g.user.wallets.length) {
       this.form.wallet = this.g.user.wallets[0].id
     }
+    this.getTerms()
     this.getSwaps()
     // Swap states change on the backend; refresh while the page is open.
     this.pollTimer = setInterval(() => {
       if (this.swaps.some(s => !s.done)) this.getSwaps()
     }, 15000)
-    if (this.isAdmin) {
-      this.fetchLoop()
-    }
   },
   beforeUnmount() {
     clearInterval(this.pollTimer)

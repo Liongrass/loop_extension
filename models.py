@@ -3,6 +3,11 @@ from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 
 
+class LoopOutTerms(BaseModel):
+    min_swap_amount: int
+    max_swap_amount: int
+
+
 class LoopOutQuote(BaseModel):
     amount: int
     swap_fee: int

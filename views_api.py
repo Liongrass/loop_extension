@@ -4,9 +4,9 @@ from lnbits.core.models import WalletTypeInfo
 from lnbits.decorators import check_admin, require_admin_key, require_invoice_key
 
 from .crud import get_swaps
-from .helpers import GET_INFO, LOOP_IN_TERMS, LOOP_OUT_TERMS, litd_json
-from .models import CreateLoopOut, LoopOutQuote, LoopSwap
-from .services import get_quote, start_loop_out
+from .helpers import GET_INFO, litd_json
+from .models import CreateLoopOut, LoopOutQuote, LoopOutTerms, LoopSwap
+from .services import get_quote, get_terms, start_loop_out
 
 loop_api_router = APIRouter()
 
@@ -17,13 +17,12 @@ async def api_loop_info() -> dict:
     return await litd_json(GET_INFO)
 
 
-@loop_api_router.get("/api/v1/terms", dependencies=[Depends(check_admin)])
-async def api_loop_terms() -> dict:
-    """Equivalent of `loop terms`."""
-    return {
-        "loop_out": await litd_json(LOOP_OUT_TERMS),
-        "loop_in": await litd_json(LOOP_IN_TERMS),
-    }
+@loop_api_router.get(
+    "/api/v1/terms", dependencies=[Depends(require_invoice_key)]
+)
+async def api_loop_out_terms() -> LoopOutTerms:
+    """Loop Out part of `loop terms`."""
+    return await get_terms()
 
 
 @loop_api_router.get(

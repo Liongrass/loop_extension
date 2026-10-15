@@ -62,12 +62,13 @@ from .helpers import (
     LND_LIST_PAYMENTS,
     LOOP_OUT,
     LOOP_OUT_QUOTE,
+    LOOP_OUT_TERMS,
     SWAP_INFO,
     LitdError,
     LitdUnreachableError,
     litd_call,
 )
-from .models import CreateLoopOut, LoopOutQuote, LoopSwap
+from .models import CreateLoopOut, LoopOutQuote, LoopOutTerms, LoopSwap
 
 EXT_ID = "loop"
 # Same defaults as the loop CLI.
@@ -101,6 +102,17 @@ def _reserve_msat(amount_sat: int, max_routing_fee_sat: int) -> int:
 
 def _label(swap_id: str) -> str:
     return f"lnbits-loop:{swap_id}"
+
+
+async def get_terms() -> LoopOutTerms:
+    try:
+        terms = await litd_call(LOOP_OUT_TERMS, LOOP_OUT_TERMS.request())
+    except (LitdError, LitdUnreachableError) as exc:
+        raise HTTPException(HTTPStatus.BAD_GATEWAY, str(exc)) from exc
+    return LoopOutTerms(
+        min_swap_amount=terms.min_swap_amount,
+        max_swap_amount=terms.max_swap_amount,
+    )
 
 
 async def get_quote(amount: int) -> LoopOutQuote:
