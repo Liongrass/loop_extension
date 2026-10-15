@@ -164,13 +164,11 @@ async def _loop_grpc_call(conn: LitdConnection, method: str) -> dict:
             )
             response = await rpc(request_cls(), timeout=15)
     except grpc.aio.AioRpcError as exc:
-        if exc.code() == grpc.StatusCode.UNAVAILABLE:
-            raise HTTPException(
-                HTTPStatus.BAD_GATEWAY,
-                f"Unable to connect to litd at {conn.endpoint}.",
-            ) from exc
+        # Keep litd's details even for UNAVAILABLE: litd itself returns that
+        # code when it can't reach Loop, e.g. a remote loopd that isn't up.
         raise HTTPException(
-            HTTPStatus.BAD_GATEWAY, f"litd: {exc.details()}"
+            HTTPStatus.BAD_GATEWAY,
+            f"litd at {conn.endpoint}: {exc.code().name}: {exc.details()}",
         ) from exc
 
     # Same JSON shape as litd's REST gateway (proto field names, defaults shown).
