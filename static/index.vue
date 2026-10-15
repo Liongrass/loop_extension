@@ -194,33 +194,37 @@
     <q-dialog v-model="quoteDialog.show">
       <q-card v-if="quote" class="q-pa-lg lnbits__dialog-card">
         <h6 class="text-subtitle1 q-mt-none q-mb-md">Confirm Loop Out</h6>
-        <q-markup-table dense flat>
-          <tbody>
-            <tr>
-              <td>You pay over Lightning</td>
-              <td class="text-right">
-                <span v-text="sat(quote.amount + quote.swap_fee)"></span>
-              </td>
-            </tr>
-            <tr>
-              <td>Estimated swap fee</td>
-              <td class="text-right">
-                <span
-                  v-text="sat(quote.swap_fee + quote.miner_fee_estimate)"
-                ></span>
-              </td>
-            </tr>
-            <tr class="text-weight-bold">
-              <td>You receive on-chain</td>
-              <td class="text-right">
-                <span
-                  v-text="sat(quote.amount - quote.miner_fee_estimate)"
-                ></span>
-              </td>
-            </tr>
-          </tbody>
-        </q-markup-table>
-        <p class="text-caption q-mt-md q-mb-none">
+        <div
+          class="q-mb-md"
+          style="
+            display: grid;
+            grid-template-columns: 1fr auto;
+            column-gap: 24px;
+            row-gap: 12px;
+            font-variant-numeric: tabular-nums;
+          "
+        >
+          <div>You pay over Lightning</div>
+          <div
+            class="text-right"
+            v-text="sat(quote.amount + quote.swap_fee)"
+          ></div>
+
+          <div>Estimated swap fee</div>
+          <div
+            class="text-right"
+            v-text="sat(quote.swap_fee + quote.miner_fee_estimate)"
+          ></div>
+
+          <q-separator style="grid-column: 1 / -1"></q-separator>
+
+          <div class="text-weight-bold">You receive on-chain</div>
+          <div
+            class="text-right text-weight-bold"
+            v-text="sat(quote.amount - quote.miner_fee_estimate)"
+          ></div>
+        </div>
+        <p class="text-caption q-mt-lg q-mb-none">
           Swaps can take a while: the on-chain transaction has to confirm first.
         </p>
         <div class="row q-mt-lg">
